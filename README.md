@@ -1,147 +1,133 @@
-# Pretext
+Text Layout Validation Dashboard
 
-Pure JavaScript/TypeScript library for multiline text measurement & layout. Fast, accurate & supports all the languages you didn't even know about. Allows rendering to DOM, Canvas, SVG and soon, server-side.
+A clean, browser‑based dashboard for validating text layout accuracy across multiple fonts, sizes, and container widths.  
+This tool compares browser‑rendered text height against a custom layout engine prediction, helping you detect mismatches, diagnose line‑breaking issues, and improve rendering consistency.
 
-Pretext side-steps the need for DOM measurements (e.g. `getBoundingClientRect`, `offsetHeight`), which trigger layout reflow, one of the most expensive operations in the browser. It implements its own text measurement logic, using the browsers' own font engine as ground truth (very AI-friendly iteration method).
+Ideal for:  
+- UI/UX engineers  
+- Font/layout engine developers  
+- AI‑generated UI validation  
+- Cross‑browser text rendering analysis  
 
-## Installation
+---
 
-```sh
-npm install @chenglou/pretext
-```
+🚀 Features
 
-## Demos
+- Multi‑font, multi‑size, multi‑width sweep  
+- Browser vs. engine height comparison  
+- Detailed mismatch diagnostics  
+- Per‑line comparison (ours vs. browser)  
+- Clean, modern dashboard UI  
+- No backend required — runs fully in the browser  
+- Optional JSON report output  
 
-Clone the repo, run `bun install`, then `bun start`, and open the `/demos` in your browser (no trailing slash. Bun devserver bugs on those)
-Alternatively, see them live at [chenglou.me/pretext](https://chenglou.me/pretext/). Some more at [somnai-dreams.github.io/pretext-demos](https://somnai-dreams.github.io/pretext-demos/)
+---
 
-## API
+📂 Project Structure
 
-Pretext serves 2 use cases:
+accuracy.html          → Dashboard UI  
+accuracy.ts            → Validation logic  
+src/layout.ts          → Layout prediction engine  
+src/test-data.ts       → Text samples, sizes, widths  
+diagnostic-utils.ts    → Line extraction helpers  
+report-utils.ts        → Optional reporting helpers  
 
-### 1. Measure a paragraph's height _without ever touching DOM_
+---
 
-```ts
-import { prepare, layout } from '@chenglou/pretext'
+🖥️ How to Run
 
-const prepared = prepare('AGI 春天到了. بدأت الرحلة 🚀', '16px Inter')
-const { height, lineCount } = layout(prepared, textWidth, 20) // pure arithmetics. No DOM layout & reflow!
-```
+Option 1 — Open directly  
+Open the file: accuracy.html  
+in your browser.  
+The sweep runs automatically and displays results in the dashboard.
 
-`prepare()` does the one-time work: normalize whitespace, segment the text, apply glue rules, measure the segments with canvas, and return an opaque handle. `layout()` is the cheap hot path after that: pure arithmetic over cached widths. Do not rerun `prepare()` for the same text and configs; that'd defeat its precomputation. For example, on resize, only rerun `layout()`.
+Option 2 — GitHub Pages  
+1. Go to Settings → Pages  
+2. Select main branch / root  
+3. Save  
+4. Visit your published URL  
 
-If you want textarea-like text where ordinary spaces, `\t` tabs, and `\n` hard breaks stay visible, pass `{ whiteSpace: 'pre-wrap' }` to `prepare()`:
+Your dashboard will run online with no setup.
 
-```ts
-const prepared = prepare(textareaValue, '16px Inter', { whiteSpace: 'pre-wrap' })
-const { height } = layout(prepared, textareaWidth, 20)
-```
+---
 
-On the current checked-in benchmark snapshot:
-- `prepare()` is about `19ms` for the shared 500-text batch
-- `layout()` is about `0.09ms` for that same batch
+🛠️ Customization
 
-We support all the languages you can imagine, including emojis and mixed-bidi, and caters to specific browser quirks
+Edit test data  
+Modify: src/test-data.ts  
+You can change:  
+- text samples  
+- font sizes  
+- container widths  
 
-The returned height is the crucial last piece for unlocking web UI's:
-- proper virtualization/occlusion without guesstimates & caching
-- fancy userland layouts: masonry, JS-driven flexbox-like implementations, nudging a few layout values without CSS hacks (imagine that), etc.
-- _development time_ verification (especially now with AI) that labels on e.g. buttons don't overflow to the next line, browser-free
-- prevent layout shift when new text loads and you wanna re-anchor the scroll position
+Edit layout engine  
+Modify: src/layout.ts  
+This controls:  
+- line breaking  
+- height prediction  
+- grapheme segmentation  
+- layout rules  
 
-### 2. Lay out the paragraph lines manually yourself
+Edit dashboard UI  
+Modify: accuracy.html  
+You can customize:  
+- colors  
+- fonts  
+- layout  
+- branding  
+- buttons  
+- footer  
 
-Switch out `prepare` with `prepareWithSegments`, then:
+Edit validation logic  
+Modify: accuracy.ts  
+This controls:  
+- sweep logic  
+- mismatch detection  
+- diagnostics  
+- report generation  
 
-- `layoutWithLines()` gives you all the lines at a fixed width:
+---
 
-```ts
-import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
+📊 How It Works
 
-const prepared = prepareWithSegments('AGI 春天到了. بدأت الرحلة 🚀', '18px "Helvetica Neue"')
-const { lines } = layoutWithLines(prepared, 320, 26) // 320px max width, 26px line height
-for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i].text, 0, i * 26)
-```
+1. The script prepares each text sample using prepareWithSegments().  
+2. It renders the same text in a hidden DOM container.  
+3. It measures the browser height using getBoundingClientRect().  
+4. It predicts the height using your layout engine (layout()).  
+5. It compares the two values.  
+6. If the difference is 1px or more, it logs a mismatch.  
+7. It extracts per‑line differences for debugging.  
+8. Results are displayed in the dashboard.  
 
-- `walkLineRanges()` gives you line widths and cursors without building the text strings:
+---
 
-```ts
-let maxW = 0
-walkLineRanges(prepared, 320, line => { if (line.width > maxW) maxW = line.width })
-// maxW is now the widest line — the tightest container width that still fits the text! This multiline "shrink wrap" has been missing from web
-```
+📦 Dependencies
 
-- `layoutNextLine()` lets you route text one row at a time when width changes as you go:
+This project relies on:  
+- layout.ts  
+- layoutWithLines()  
+- prepareWithSegments()  
+- diagnostic-utils.ts  
+- report-utils.ts  
 
-```ts
-let cursor = { segmentIndex: 0, graphemeIndex: 0 }
-let y = 0
+These must remain in your project for the validation engine to work.
 
-// Flow text around a floated image: lines beside the image are narrower
-while (true) {
-  const width = y < image.bottom ? columnWidth - image.width : columnWidth
-  const line = layoutNextLine(prepared, cursor, width)
-  if (line === null) break
-  ctx.fillText(line.text, 0, y)
-  cursor = line.end
-  y += 26
-}
-```
+---
 
-This usage allows rendering to canvas, SVG, WebGL and (eventually) server-side.
+📘 Development
 
-### API Glossary
+To modify or extend the tool:  
+- Update accuracy.ts for logic  
+- Update accuracy.html for UI  
+- Update test-data.ts for inputs  
+- Update layout.ts for prediction rules  
 
-Use-case 1 APIs:
-```ts
-prepare(text: string, font: string, options?: { whiteSpace?: 'normal' | 'pre-wrap' }): PreparedText // one-time text analysis + measurement pass, returns an opaque value to pass to `layout()`. Make sure `font` is synced with your css `font` declaration shorthand (e.g. size, weight, style, family) for the text you're measuring. `font` is the same format as what you'd use for `myCanvasContext.font = ...`, e.g. `16px Inter`.
-layout(prepared: PreparedText, maxWidth: number, lineHeight: number): { height: number, lineCount: number } // calculates text height given a max width and lineHeight. Make sure `lineHeight` is synced with your css `line-height` declaration for the text you're measuring.
-```
+No build system is required unless you want to compile TypeScript to JavaScript.
 
-Use-case 2 APIs:
-```ts
-prepareWithSegments(text: string, font: string, options?: { whiteSpace?: 'normal' | 'pre-wrap' }): PreparedTextWithSegments // same as `prepare()`, but returns a richer structure for manual line layouts needs
-layoutWithLines(prepared: PreparedTextWithSegments, maxWidth: number, lineHeight: number): { height: number, lineCount: number, lines: LayoutLine[] } // high-level api for manual layout needs. Accepts a fixed max width for all lines. Similar to `layout()`'s return, but additionally returns the lines info
-walkLineRanges(prepared: PreparedTextWithSegments, maxWidth: number, onLine: (line: LayoutLineRange) => void): number // low-level api for manual layout needs. Accepts a fixed max width for all lines. Calls `onLine` once per line with its actual calculated line width and start/end cursors, without building line text strings. Very useful for certain cases where you wanna speculatively test a few width and height boundaries (e.g. binary search a nice width value by repeatedly calling walkLineRanges and checking the line count, and therefore height, is "nice" too. You can have text messages shrinkwrap and balanced text layout this way). After walkLineRanges calls, you'd call layoutWithLines once, with your satisfying max width, to get the actual lines info.
-layoutNextLine(prepared: PreparedTextWithSegments, start: LayoutCursor, maxWidth: number): LayoutLine | null // iterator-like api for laying out each line with a different width! Returns the LayoutLine starting from `start`, or `null` when the paragraph's exhausted. Pass the previous line's `end` cursor as the next `start`.
-type LayoutLine = {
-  text: string // Full text content of this line, e.g. 'hello world'
-  width: number // Measured width of this line, e.g. 87.5
-  start: LayoutCursor // Inclusive start cursor in prepared segments/graphemes
-  end: LayoutCursor // Exclusive end cursor in prepared segments/graphemes
-}
-type LayoutLineRange = {
-  width: number // Measured width of this line, e.g. 87.5
-  start: LayoutCursor // Inclusive start cursor in prepared segments/graphemes
-  end: LayoutCursor // Exclusive end cursor in prepared segments/graphemes
-}
-type LayoutCursor = {
-  segmentIndex: number // Segment index in prepareWithSegments' prepared rich segment stream
-  graphemeIndex: number // Grapheme index within that segment; `0` at segment boundaries
-}
-```
+---
 
-Other helpers:
-```ts
-clearCache(): void // clears Pretext's shared internal caches used by prepare() and prepareWithSegments(). Useful if your app cycles through many different fonts or text variants and you want to release the accumulated cache
-setLocale(locale?: string): void // optional (by default we use the current locale). Sets locale for future prepare() and prepareWithSegments(). Internally, it also calls clearCache(). Setting a new locale doesn't affect existing prepare() and prepareWithSegments() states (no mutations to them)
-```
+📝 Credits
 
-## Caveats
+This project is based on the concept of text layout validation and uses a layout engine inspired by earlier work in the field.  
+All UI, dashboard logic, and validation workflow have been customized and extended for this fork.
 
-Pretext doesn't try to be a full font rendering engine (yet?). It currently targets the common text setup:
-- `white-space: normal`
-- `word-break: normal`
-- `overflow-wrap: break-word`
-- `line-break: auto`
-- If you pass `{ whiteSpace: 'pre-wrap' }`, ordinary spaces, `\t` tabs, and `\n` hard breaks are preserved instead of collapsed. Tabs follow the default browser-style `tab-size: 8`. The other wrapping defaults stay the same: `word-break: normal`, `overflow-wrap: break-word`, and `line-break: auto`.
-- `system-ui` is unsafe for `layout()` accuracy on macOS. Use a named font.
-- Because the default target includes `overflow-wrap: break-word`, very narrow widths can still break inside words, but only at grapheme boundaries.
-
-## Develop
-
-See [DEVELOPMENT.md](DEVELOPMENT.md) for the dev setup and commands.
-
-## Credits
-
-Sebastian Markbage first planted the seed with [text-layout](https://github.com/chenglou/text-layout) last decade. His design — canvas `measureText` for shaping, bidi from pdf.js, streaming line breaking — informed the architecture we kept pushing forward here.
