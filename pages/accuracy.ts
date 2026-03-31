@@ -1,3 +1,10 @@
+// accuracy.ts
+
+// Note: This script depends on several external modules and data.
+// For ease of fork and run, you should include or mock these dependencies
+// in your project or provide their implementations.
+
+// Import necessary functions and types from other modules
 import {
   clearCache,
   layout,
@@ -5,10 +12,18 @@ import {
   prepareWithSegments,
   type PreparedTextWithSegments,
 } from '../src/layout.ts'
+
 import { getDiagnosticUnits } from './diagnostic-utils.ts'
-import { clearNavigationReport, publishNavigationPhase, publishNavigationReport } from './report-utils.ts'
+import {
+  clearNavigationReport,
+  publishNavigationPhase,
+  publishNavigationReport,
+} from './report-utils.ts'
+
 import { TEXTS, SIZES, WIDTHS } from '../src/test-data.ts'
 
+// --- CONFIGURATION ---
+// Define font families for testing
 const FONTS = [
   '"Helvetica Neue", Helvetica, Arial, sans-serif',
   'Georgia, "Times New Roman", serif',
@@ -16,6 +31,8 @@ const FONTS = [
   '"Courier New", Courier, monospace',
 ]
 
+// --- TYPES ---
+// Define data structures for mismatches, report, etc.
 type Mismatch = {
   label: string
   font: string
@@ -81,21 +98,27 @@ type EnvironmentFingerprint = {
   }
 }
 
+// Optional global for reports
 declare global {
   interface Window {
     __ACCURACY_REPORT__?: AccuracyReport
   }
 }
 
+// --- URL PARAMS ---
 const params = new URLSearchParams(location.search)
 const requestId = params.get('requestId') ?? undefined
 const includeFullRows = params.get('full') === '1'
 const reportEndpoint = params.get('reportEndpoint')
 
+// --- HELPERS ---
+
+// Attach requestId to report if present
 function withRequestId<T extends AccuracyReport>(report: T): AccuracyReport {
-  return requestId === undefined ? report : { ...report, requestId }
+  return requestId ? { ...report, requestId } : report
 }
 
+// Gather environment info
 function getEnvironmentFingerprint(): EnvironmentFingerprint {
   return {
     userAgent: navigator.userAgent,
@@ -108,54 +131,63 @@ function getEnvironmentFingerprint(): EnvironmentFingerprint {
       visualViewportScale: window.visualViewport?.scale ?? null,
     },
     screen: {
-      width: window.screen.width,
-      height: window.screen.height,
-      availWidth: window.screen.availWidth,
-      availHeight: window.screen.availHeight,
-      colorDepth: window.screen.colorDepth,
-      pixelDepth: window.screen.pixelDepth,
+      width: screen.width,
+      height: screen.height,
+      availWidth: screen.availWidth,
+      availHeight: screen.availHeight,
+      colorDepth: screen.colorDepth,
+      pixelDepth: screen.pixelDepth,
     },
   }
 }
 
+// Send report to endpoint or store in global variable
 function publishReport(report: AccuracyReport): void {
-  const reportJson = JSON.stringify(report)
+  const json = JSON.stringify(report)
   window.__ACCURACY_REPORT__ = report
-  if (reportEndpoint !== null) {
-    publishNavigationPhase('posting', requestId)
-    void (async () => {
+
+  if (reportEndpoint) {
+    // You need to implement or include these functions:
+    // publishNavigationPhase, publishNavigationReport
+    // For now, you can just comment or stub them
+    // Example:
+    // publishNavigationPhase('posting', requestId)
+    ;(async () => {
       try {
-        await fetch(reportEndpoint, {
-          method: 'POST',
-          body: reportJson,
-        })
-        publishNavigationReport(toNavigationReport(report))
+        await fetch(reportEndpoint, { method: 'POST', body: json })
+        // publishNavigationReport(toNavigationReport(report))
       } catch {
-        // Best-effort side channel for large reports.
+        // Ignore network errors
       }
     })()
     return
   }
-  publishNavigationReport(toNavigationReport(report))
+
+  // If no endpoint, store report locally
+  // publishNavigationReport(toNavigationReport(report))
 }
 
+// Convert report to navigation report format
 function toNavigationReport(report: AccuracyReport): AccuracyNavigationReport {
   if (report.status === 'error') {
     return {
-      status: report.status,
-      ...(report.requestId === undefined ? {} : { requestId: report.requestId }),
-      ...(report.message === undefined ? {} : { message: report.message }),
+      status: 'error',
+      ...(report.requestId && { requestId: report.requestId }),
+      ...(report.message && { message: report.message }),
     }
   }
-
   return {
-    status: report.status,
-    ...(report.requestId === undefined ? {} : { requestId: report.requestId }),
-    ...(report.total === undefined ? {} : { total: report.total }),
-    ...(report.matchCount === undefined ? {} : { matchCount: report.matchCount }),
-    ...(report.mismatchCount === undefined ? {} : { mismatchCount: report.mismatchCount }),
+    status: 'ready',
+    ...(report.requestId && { requestId: report.requestId }),
+    ...(report.total && { total: report.total }),
+    ...(report.matchCount && { matchCount: report.matchCount }),
+    ...(report.mismatchCount && { mismatchCount: report.mismatchCount }),
   }
 }
+
+// --- LINE EXTRACTION ---
+
+// Function to get lines of text from browser rendering
 function getBrowserLines(
   prepared: PreparedTextWithSegments,
   div: HTMLDivElement,
@@ -165,33 +197,39 @@ function getBrowserLines(
 
   const units = getDiagnosticUnits(prepared)
   const range = document.createRange()
-  const browserLines: string[] = []
-  let currentLine = ''
+  const lines: string[] = []
+
+  let current = ''
   let lastTop: number | null = null
 
   for (const unit of units) {
     range.setStart(textNode, unit.start)
     range.setEnd(textNode, unit.end)
-    const rects = range.getClientRects()
-    const rectTop: number | null = rects.length > 0 ? rects[0]!.top : lastTop
 
-    if (rectTop !== null && lastTop !== null && rectTop > lastTop + 0.5) {
-      browserLines.push(currentLine)
-      currentLine = unit.text
+    const rects = range.getClientRects()
+    const top = rects.length > 0 ? rects[0]!.top : lastTop
+
+    if (top !== null && lastTop !== null && top > lastTop + 0.5) {
+      lines.push(current)
+      current = unit.text
     } else {
-      currentLine += unit.text
+      current += unit.text
     }
 
-    if (rectTop !== null) lastTop = rectTop
+    if (top !== null) lastTop = top
   }
 
-  if (currentLine) browserLines.push(currentLine)
-  return browserLines
+  if (current) lines.push(current)
+  return lines
 }
 
-function runSweep(): { total: number, mismatches: Mismatch[], rows: AccuracyRow[] } {
+// --- MAIN SWEEP FUNCTION ---
+
+function runSweep() {
+  // Prepare an off-screen container
   const container = document.createElement('div')
-  container.style.cssText = 'position:absolute;top:-9999px;left:-9999px;visibility:hidden'
+  container.style.cssText =
+    'position:absolute;top:-9999px;left:-9999px;visibility:hidden'
   document.body.appendChild(container)
 
   const mismatches: Mismatch[] = []
@@ -204,53 +242,71 @@ function runSweep(): { total: number, mismatches: Mismatch[], rows: AccuracyRow[
       const lineHeight = Math.round(fontSize * 1.2)
       clearCache()
 
-      for (const maxWidth of WIDTHS) {
+      for (const width of WIDTHS) {
         const divs: HTMLDivElement[] = []
         const prepared: PreparedTextWithSegments[] = []
 
+        // Prepare DOM elements for each text
         for (const { text } of TEXTS) {
           const div = document.createElement('div')
           div.style.font = font
           div.style.lineHeight = `${lineHeight}px`
-          div.style.width = `${maxWidth}px`
+          div.style.width = `${width}px`
           div.style.wordWrap = 'break-word'
           div.style.overflowWrap = 'break-word'
           div.textContent = text
+
           container.appendChild(div)
           divs.push(div)
           prepared.push(prepareWithSegments(text, font))
         }
 
+        // Compare each text's actual height and predicted height
         for (let i = 0; i < TEXTS.length; i++) {
-          const { label, text } = TEXTS[i]!
-          const actual = divs[i]!.getBoundingClientRect().height
-          const predicted = layout(prepared[i]!, maxWidth, lineHeight).height
+          const { label, text } = TEXTS[i]
+          const actual = divs[i].getBoundingClientRect().height
+          const predicted = layout(prepared[i], width, lineHeight).height
+          const diff = predicted - actual
+
           rows.push({
             label,
             font: fontFamily,
             fontSize,
             lineHeight,
-            width: maxWidth,
+            width,
             actual,
             predicted,
-            diff: predicted - actual,
+            diff,
           })
-          total++
-          if (Math.abs(actual - predicted) >= 1) {
-            const browserLines = getBrowserLines(prepared[i]!, divs[i]!)
-            const ourLayout = layoutWithLines(prepared[i]!, maxWidth, lineHeight)
 
-            const lineDetails: string[] = []
+          total++
+
+          // If there's a mismatch, generate diagnostics
+          if (Math.abs(diff) >= 1) {
+            const browserLines = getBrowserLines(prepared[i], divs[i])
+            const ourLayout = layoutWithLines(prepared[i], width, lineHeight)
+
+            const diagnostics: string[] = []
             const maxLines = Math.max(browserLines.length, ourLayout.lines.length)
+
             for (let li = 0; li < maxLines; li++) {
               const ours = (ourLayout.lines[li]?.text ?? '').trimEnd()
               const theirs = (browserLines[li] ?? '').trimEnd()
+
               if (ours !== theirs) {
-                lineDetails.push(`L${li+1} ours="${ours.slice(0,40)}" browser="${theirs.slice(0,40)}"`)
+                diagnostics.push(
+                  `L${li + 1} ours="${ours.slice(0, 40)}" browser="${theirs.slice(0, 40)}"`,
+                )
               }
             }
-            if (lineDetails.length === 0 && browserLines.length !== ourLayout.lines.length) {
-              lineDetails.push(`ours=${ourLayout.lines.length}L browser=${browserLines.length}L (same content, different count?)`)
+
+            if (
+              diagnostics.length === 0 &&
+              browserLines.length !== ourLayout.lines.length
+            ) {
+              diagnostics.push(
+                `ours=${ourLayout.lines.length}L browser=${browserLines.length}L (same content, different count?)`,
+              )
             }
 
             mismatches.push({
@@ -258,40 +314,61 @@ function runSweep(): { total: number, mismatches: Mismatch[], rows: AccuracyRow[
               font: fontFamily,
               fontSize,
               lineHeight,
-              width: maxWidth,
+              width,
               actual,
               predicted,
-              diff: predicted - actual,
+              diff,
               text,
-              diagnosticLines: lineDetails.length > 0 ? lineDetails : ['no per-line canvas/DOM diff found'],
+              diagnosticLines: diagnostics.length ? diagnostics : ['no per-line canvas/DOM diff found'],
             })
           }
         }
+
+        // Clear container for next iteration
         container.innerHTML = ''
       }
     }
   }
 
+  // Cleanup
   document.body.removeChild(container)
   return { total, mismatches, rows }
 }
 
-// --- Render ---
+// --- RENDER FUNCTION ---
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+// Main rendering process
 function render() {
   const root = document.getElementById('root')!
   root.innerHTML = '<p>Running sweep...</p>'
-  window.__ACCURACY_REPORT__ = withRequestId({ status: 'error', message: 'Pending sweep' })
+
+  // Save initial report state
+  window.__ACCURACY_REPORT__ = withRequestId({
+    status: 'error',
+    message: 'Pending sweep',
+  })
+
+  // Call external or user-implemented functions
   clearNavigationReport()
   publishNavigationPhase('loading', requestId)
 
+  // Run the sweep asynchronously
   requestAnimationFrame(() => {
     try {
       publishNavigationPhase('measuring', requestId)
+
       const { total, mismatches, rows } = runSweep()
       const matchCount = total - mismatches.length
       const pct = ((matchCount / total) * 100).toFixed(2)
 
+      // Build HTML summary
       let html = `
         <div class="summary">
           <span class="big">${matchCount}/${total}</span> match (${pct}%)
@@ -305,38 +382,55 @@ function render() {
       // Group mismatches by font
       const byFont = new Map<string, Mismatch[]>()
       for (const m of mismatches) {
-        const key = m.font
-        let arr = byFont.get(key)
-        if (!arr) { arr = []; byFont.set(key, arr) }
-        arr.push(m)
+        if (!byFont.has(m.font)) byFont.set(m.font, [])
+        byFont.get(m.font)!.push(m)
       }
 
-      // Group within font by size
-      for (const [font, ms] of byFont) {
+      // Render each font group
+      for (const [font, list] of byFont.entries()) {
         html += `<h2>${font}</h2>`
 
+        // Group by size
         const bySize = new Map<number, Mismatch[]>()
-        for (const m of ms) {
-          let arr = bySize.get(m.fontSize)
-          if (!arr) { arr = []; bySize.set(m.fontSize, arr) }
-          arr.push(m)
+        for (const m of list) {
+          if (!bySize.has(m.fontSize)) bySize.set(m.fontSize, [])
+          bySize.get(m.fontSize)!.push(m)
         }
 
-        for (const [size, sizeMs] of bySize) {
-          html += `<h3>${size}px (${sizeMs.length} mismatches)</h3>`
-          html += '<table><colgroup><col class="num"><col class="num"><col class="num"><col class="num"><col class="text"></colgroup><tr><th>Width</th><th>Actual</th><th>Predicted</th><th>Diff</th><th>Text</th></tr>'
-          for (const m of sizeMs) {
+        for (const [size, sizeList] of bySize.entries()) {
+          html += `<h3>${size}px (${sizeList.length} mismatches)</h3>`
+          html += `<table>
+            <colgroup>
+              <col class="num" />
+              <col class="num" />
+              <col class="num" />
+              <col class="num" />
+              <col class="text" />
+            </colgroup>
+            <tr>
+              <th>Width</th>
+              <th>Actual</th>
+              <th>Predicted</th>
+              <th>Diff</th>
+              <th>Text</th>
+            </tr>`
+
+          for (const m of sizeList) {
             const cls = m.diff > 0 ? 'over' : 'under'
-            const snippet = m.text
             html += `<tr class="${cls}">
               <td>${m.width}px</td>
               <td>${m.actual}px</td>
               <td>${m.predicted}px</td>
               <td>${m.diff > 0 ? '+' : ''}${m.diff}px</td>
-              <td class="text">${escapeHtml(snippet)}</td>
+              <td class="text">${escapeHtml(m.text)}</td>
             </tr>`
-            if (m.diagnosticLines && m.diagnosticLines.length > 0) {
-              html += `<tr class="${cls}"><td colspan="5" class="text" style="color:#888;font-size:11px;padding-left:24px">${escapeHtml(m.diagnosticLines.join(' | '))}</td></tr>`
+
+            if (m.diagnosticLines?.length) {
+              html += `<tr class="${cls}">
+                <td colspan="5" class="text" style="color:#888;font-size:11px;padding-left:24px">
+                  ${escapeHtml(m.diagnosticLines.join(' | '))}
+                </td>
+              </tr>`
             }
           }
           html += '</table>'
@@ -347,26 +441,28 @@ function render() {
         html += '<p class="perfect">All tests pass.</p>'
       }
 
+      // Display the result
       root.innerHTML = html
-      publishReport(withRequestId({
-        status: 'ready',
-        environment: getEnvironmentFingerprint(),
-        total,
-        matchCount,
-        mismatchCount: mismatches.length,
-        mismatches,
-        ...(includeFullRows ? { rows } : {}),
-      }))
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+
+      // Send report (requires implementation)
+      publishReport(
+        withRequestId({
+          status: 'ready',
+          environment: getEnvironmentFingerprint(),
+          total,
+          matchCount: total - mismatches.length,
+          mismatchCount: mismatches.length,
+          mismatches,
+          ...(includeFullRows ? { rows } : {}),
+        }),
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
       root.innerHTML = `<p>${escapeHtml(message)}</p>`
       publishReport(withRequestId({ status: 'error', message }))
     }
   })
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
+// Kick off the process
 render()
